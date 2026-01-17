@@ -1,0 +1,16 @@
+{
+  "name": "TranscriptQuery Hub",
+  "short_name": "TQ Hub",
+  "description": "AI-Powered Transcript Search & Insights",
+  "icons": [
+    {
+      "src": "/assets/favicon/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "theme_color": "#2563eb",
+  "background_color": "#f9fafb",
+  "display": "standalone",
+  "start_url": "/"
+}

@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+**/node_modules/
+**/bower_components/
+**/.DS_Store
+**/.angular/
+**/Thumbs.db
+# End of https://www.toptal.com/developers/gitignore/api/python

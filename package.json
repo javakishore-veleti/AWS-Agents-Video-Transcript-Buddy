@@ -95,9 +95,36 @@
     "frontend:dev": "cd frontend && npm start",
     "frontend:build": "cd frontend && npm run build",
 
+    "// ==================== PORTALS (Angular 17) ====================": "",
+    "portal:hub:install": "cd portals/transcript-query-hub && npm install",
+    "portal:hub:dev": "cd portals/transcript-query-hub && npm start",
+    "portal:hub:build": "cd portals/transcript-query-hub && npm run build",
+    "portal:hub:build:prod": "cd portals/transcript-query-hub && npm run build:prod",
+    
+    "portal:admin:install": "cd portals/transcript-query-admin-center && npm install",
+    "portal:admin:dev": "cd portals/transcript-query-admin-center && npm start",
+    "portal:admin:build": "cd portals/transcript-query-admin-center && npm run build",
+    
+    "portal:itops:install": "cd portals/transcript-query-itops-center && npm install",
+    "portal:itops:dev": "cd portals/transcript-query-itops-center && npm start",
+    "portal:itops:build": "cd portals/transcript-query-itops-center && npm run build",
+    
+    "portal:aiml:install": "cd portals/transcript-query-aiml-center && npm install",
+    "portal:aiml:dev": "cd portals/transcript-query-aiml-center && npm start",
+    "portal:aiml:build": "cd portals/transcript-query-aiml-center && npm run build",
+    
+    "portal:integrations:install": "cd portals/transcript-query-integrations-center && npm install",
+    "portal:integrations:dev": "cd portals/transcript-query-integrations-center && npm start",
+    "portal:integrations:build": "cd portals/transcript-query-integrations-center && npm run build",
+    
+    "portals:install:all": "npm run portal:hub:install",
+    "portals:build:all": "npm run portal:hub:build:prod",
+
     "// ==================== FULL STACK ====================": "",
-    "dev:mac": "concurrently \"npm run backend:dev:mac\" \"npm run frontend:dev\"",
-    "dev:win": "concurrently \"npm run backend:dev:win\" \"npm run frontend:dev\"",
+    "dev:mac": "concurrently \"npm run backend:dev:mac\" \"npm run portal:hub:dev\"",
+    "dev:win": "concurrently \"npm run backend:dev:win\" \"npm run portal:hub:dev\"",
+    "dev:backend:mac": "npm run backend:dev:mac",
+    "dev:frontend:mac": "npm run portal:hub:dev",
 
     "// ==================== CLEANUP ====================": "",
     "clean:venv:mac": "rm -rf ~/runtime_data/python_venvs/video_transcript_buddy_venv && echo '✅ Virtual environment removed!'",
@@ -106,7 +133,7 @@
     "clean:vectors:win": "rmdir /s /q backend\\microservices\\video_transcript_buddy_service\\data\\vectors && echo ✅ Vector store cleared!",
 
     "// ==================== HELP ====================": "",
-    "help": "echo '\\n📖 Video Transcript Buddy - Commands\\n\\n  FIRST TIME SETUP:\\n    npm run setup:mac              - Setup venv & .env\\n    npm run aws:profile:setup:mac  - Configure AWS profile\\n    npm run openai:setup:mac        - Configure OpenAI key\\n    npm run verify:mac              - Verify all configs\\n\\n  RUN:\\n    npm run start:mac              - Start backend server\\n\\n  TEST:\\n    npm run test:health:mac        - Test health endpoint\\n    npm run test:api:mac            - Test root endpoint\\n\\n  AWS:\\n    npm run aws:profile:verify:mac - Verify AWS profile\\n    npm run aws:s3:create:mac      - Create S3 bucket\\n    npm run aws:s3:list:mac        - List S3 buckets\\n\\n  CLEANUP:\\n    npm run clean:venv:mac         - Remove venv\\n    npm run clean:vectors:mac      - Clear vector store\\n'"
+    "help": "echo '\\n📖 Video Transcript Buddy - Commands\\n\\n  FIRST TIME SETUP:\\n    npm run setup:mac              - Setup venv & .env\\n    npm run aws:profile:setup:mac  - Configure AWS profile\\n    npm run openai:setup:mac       - Configure OpenAI key\\n    npm run verify:mac             - Verify all configs\\n\\n  BACKEND:\\n    npm run start:mac              - Start backend server\\n    npm run test:health:mac        - Test health endpoint\\n\\n  PORTALS (Frontend):\\n    npm run portal:hub:install     - Install Hub dependencies\\n    npm run portal:hub:dev         - Start Hub portal (port 4200)\\n    npm run portal:hub:build:prod  - Build for production\\n\\n  FULL STACK:\\n    npm run dev:mac                - Start backend + frontend\\n\\n  AWS:\\n    npm run aws:profile:verify:mac - Verify AWS profile\\n    npm run aws:s3:create:mac      - Create S3 bucket\\n\\n  CLEANUP:\\n    npm run clean:venv:mac         - Remove venv\\n    npm run clean:vectors:mac      - Clear vector store\\n'"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
