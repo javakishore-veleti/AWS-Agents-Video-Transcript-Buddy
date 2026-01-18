@@ -2,10 +2,13 @@
 Transcript Routes - REST endpoints for transcript management.
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, status, Query
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Query, Depends
 from typing import List, Optional, Dict, Any
+from sqlalchemy.orm import Session
 
+from config.database import get_db
 from services.transcript_service import TranscriptService
+from services.usage_service import UsageService
 from api.models.request_models import ReindexRequest
 from api.models.response_models import (
     TranscriptResponse,
@@ -14,6 +17,9 @@ from api.models.response_models import (
     DeleteResponse,
     ReindexResponse
 )
+from api.dependencies.auth import get_current_user, check_upload_limit
+from models.user import User
+from models.subscription import get_tier_limits
 from common.exceptions import (
     TranscriptNotFoundException,
     ValidationException,
@@ -35,7 +41,9 @@ transcript_service = TranscriptService()
 )
 async def upload_transcript(
     file: UploadFile = File(..., description="Transcript file to upload"),
-    auto_index: bool = Query(True, description="Automatically index in vector store")
+    auto_index: bool = Query(True, description="Automatically index in vector store"),
+    current_user: User = Depends(check_upload_limit),
+    db: Session = Depends(get_db)
 ) -> UploadResponse:
     """
     Upload a transcript file.
@@ -46,10 +54,30 @@ async def upload_transcript(
     try:
         content = await file.read()
         
+        # Check file size limit for tier
+        tier_limits = get_tier_limits(current_user.tier)
+        if len(content) > tier_limits.max_file_size_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail={
+                    "error": True,
+                    "error_code": "FILE_TOO_LARGE",
+                    "message": f"File exceeds {tier_limits.max_file_size_mb}MB limit for {current_user.tier} tier"
+                }
+            )
+        
         result = await transcript_service.upload_transcript(
             filename=file.filename,
             content=content,
             auto_index=auto_index
+        )
+        
+        # Record usage
+        usage_service = UsageService(db)
+        usage_service.record_upload(
+            user_id=current_user.id,
+            file_size_bytes=len(content),
+            filename=file.filename
         )
         
         return UploadResponse(
@@ -77,7 +105,9 @@ async def upload_transcript(
     summary="List all transcripts",
     description="Get a list of all uploaded transcripts"
 )
-async def list_transcripts() -> TranscriptListResponse:
+async def list_transcripts(
+    current_user: User = Depends(get_current_user)
+) -> TranscriptListResponse:
     """
     List all transcripts with their indexing status.
     """
@@ -104,7 +134,10 @@ async def list_transcripts() -> TranscriptListResponse:
     summary="Get a transcript",
     description="Get transcript content and metadata"
 )
-async def get_transcript(filename: str) -> TranscriptResponse:
+async def get_transcript(
+    filename: str,
+    current_user: User = Depends(get_current_user)
+) -> TranscriptResponse:
     """
     Get a specific transcript by filename.
     
@@ -138,7 +171,10 @@ async def get_transcript(filename: str) -> TranscriptResponse:
     summary="Delete a transcript",
     description="Delete a transcript from S3 and vector store"
 )
-async def delete_transcript(filename: str) -> DeleteResponse:
+async def delete_transcript(
+    filename: str,
+    current_user: User = Depends(get_current_user)
+) -> DeleteResponse:
     """
     Delete a specific transcript.
     
@@ -177,7 +213,10 @@ async def delete_transcript(filename: str) -> DeleteResponse:
     summary="Reindex a transcript",
     description="Reindex a transcript in the vector store"
 )
-async def reindex_transcript(filename: str) -> ReindexResponse:
+async def reindex_transcript(
+    filename: str,
+    current_user: User = Depends(get_current_user)
+) -> ReindexResponse:
     """
     Reindex a specific transcript in the vector store.
     
@@ -211,7 +250,9 @@ async def reindex_transcript(filename: str) -> ReindexResponse:
     summary="Reindex all transcripts",
     description="Reindex all transcripts in the vector store"
 )
-async def reindex_all_transcripts() -> ReindexResponse:
+async def reindex_all_transcripts(
+    current_user: User = Depends(get_current_user)
+) -> ReindexResponse:
     """
     Reindex all transcripts in the vector store.
     """
@@ -237,7 +278,10 @@ async def reindex_all_transcripts() -> ReindexResponse:
     summary="Check if transcript exists",
     description="Check if a transcript exists without downloading content"
 )
-async def check_transcript_exists(filename: str):
+async def check_transcript_exists(
+    filename: str,
+    current_user: User = Depends(get_current_user)
+):
     """
     Check if a transcript exists.
     

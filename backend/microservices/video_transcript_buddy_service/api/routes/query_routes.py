@@ -2,16 +2,21 @@
 Query Routes - REST endpoints for querying transcripts.
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from typing import List, Optional
+from sqlalchemy.orm import Session
 
+from config.database import get_db
 from services.query_service import QueryService
+from services.usage_service import UsageService
 from api.models.request_models import QueryRequest, SearchRequest
 from api.models.response_models import (
     QueryResponse,
     SearchResponse,
     SuggestionsResponse
 )
+from api.dependencies.auth import get_current_user, check_query_limit
+from models.user import User
 from common.exceptions import (
     ValidationException,
     AgentException,
@@ -30,7 +35,11 @@ query_service = QueryService()
     summary="Query transcripts",
     description="Ask a question and get an answer based on transcript content"
 )
-async def query_transcripts(request: QueryRequest) -> QueryResponse:
+async def query_transcripts(
+    request: QueryRequest,
+    current_user: User = Depends(check_query_limit),
+    db: Session = Depends(get_db)
+) -> QueryResponse:
     """
     Process a user query against transcripts.
     
@@ -43,6 +52,20 @@ async def query_transcripts(request: QueryRequest) -> QueryResponse:
             question=request.question,
             transcript_ids=request.transcript_ids,
             max_results=request.max_results
+        )
+        
+        # Determine if complex query (based on length or keywords)
+        is_complex = len(request.question) > 100 or any(
+            word in request.question.lower() 
+            for word in ["compare", "analyze", "summarize", "explain", "relationship"]
+        )
+        
+        # Record usage
+        usage_service = UsageService(db)
+        usage_service.record_query(
+            user_id=current_user.id,
+            is_complex=is_complex,
+            model_used="gpt-4"  # Or get from settings
         )
         
         return QueryResponse(
@@ -76,7 +99,11 @@ async def query_transcripts(request: QueryRequest) -> QueryResponse:
     summary="Search transcripts",
     description="Search for relevant transcript chunks without generating an answer"
 )
-async def search_transcripts(request: SearchRequest) -> SearchResponse:
+async def search_transcripts(
+    request: SearchRequest,
+    current_user: User = Depends(check_query_limit),
+    db: Session = Depends(get_db)
+) -> SearchResponse:
     """
     Search for relevant transcript chunks.
     
@@ -89,6 +116,14 @@ async def search_transcripts(request: SearchRequest) -> SearchResponse:
             query=request.query,
             transcript_ids=request.transcript_ids,
             max_results=request.max_results
+        )
+        
+        # Record as simple query
+        usage_service = UsageService(db)
+        usage_service.record_query(
+            user_id=current_user.id,
+            is_complex=False,
+            model_used=None
         )
         
         return SearchResponse(
@@ -110,7 +145,10 @@ async def search_transcripts(request: SearchRequest) -> SearchResponse:
     summary="Validate a query",
     description="Validate a query before processing"
 )
-async def validate_query(request: QueryRequest):
+async def validate_query(
+    request: QueryRequest,
+    current_user: User = Depends(get_current_user)
+):
     """
     Validate a user query before processing.
     
@@ -143,7 +181,8 @@ async def validate_query(request: QueryRequest):
 )
 async def get_suggestions(
     transcript_ids: Optional[List[str]] = None,
-    count: int = 5
+    count: int = 5,
+    current_user: User = Depends(get_current_user)
 ) -> SuggestionsResponse:
     """
     Get suggested questions based on transcript content.
