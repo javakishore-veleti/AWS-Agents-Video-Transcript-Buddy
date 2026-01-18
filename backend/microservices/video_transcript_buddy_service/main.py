@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
 from config import settings, init_db
-from api.routes import health_router, transcript_router, query_router, auth_router
+from api.routes import health_router, transcript_router, query_router, auth_router, usage_router
 from common.exceptions import BaseAppException, AuthenticationException
 
 # Configure logging
@@ -162,6 +162,13 @@ app.include_router(
     tags=["Query"]
 )
 
+# Usage routes
+app.include_router(
+    usage_router,
+    prefix="/api/usage",
+    tags=["Usage"]
+)
+
 
 # =============================================================================
 # Root Endpoint
@@ -188,7 +195,8 @@ async def root():
             "health": "/health",
             "auth": "/api/auth",
             "transcripts": "/api/transcripts",
-            "query": "/api/query"
+            "query": "/api/query",
+            "usage": "/api/usage"
         }
     }
 

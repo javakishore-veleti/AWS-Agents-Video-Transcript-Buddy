@@ -10,9 +10,16 @@ echo "=========================================="
 echo "📊 Testing Usage Endpoints"
 echo "=========================================="
 
-# Test Pricing (public)
+# Test Pricing (public - may not be implemented)
 echo -e "\n📍 GET /api/usage/pricing (public)"
-curl -s "$BASE_URL/api/usage/pricing" | python3 -m json.tool
+PRICING_RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/api/usage/pricing")
+HTTP_CODE=$(echo "$PRICING_RESPONSE" | tail -n1)
+RESPONSE_BODY=$(echo "$PRICING_RESPONSE" | sed '$d')
+if [ "$HTTP_CODE" = "200" ]; then
+  echo "$RESPONSE_BODY" | python3 -m json.tool
+else
+  echo "⚠️  Endpoint not implemented (HTTP $HTTP_CODE)"
+fi
 
 # Check if token exists
 if [ -z "$ACCESS_TOKEN" ]; then

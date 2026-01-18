@@ -66,12 +66,16 @@
     "test:backend:cov:mac": "cd backend/microservices/video_transcript_buddy_service && ~/runtime_data/python_venvs/video_transcript_buddy_venv/bin/pytest -v --cov=. --cov-report=html",
     "test:health:mac": "curl -s http://localhost:8000/health | python3 -m json.tool && echo '\\n✅ Health check passed!'",
     "test:api:mac": "echo '\\n📋 Testing API endpoints...\\n' && curl -s http://localhost:8000/ | python3 -m json.tool",
+    "test:all:mac": "bash scripts/backend/apis/run_all_tests.sh",
+    "test:all:custom:mac": "BASE_URL=$BASE_URL bash scripts/backend/apis/run_all_tests.sh",
 
     "// ==================== TESTING (Windows) ====================": "",
     "test:backend:win": "cd backend/microservices/video_transcript_buddy_service && \"%USERPROFILE%\\runtime_data\\python_venvs\\video_transcript_buddy_venv\\Scripts\\pytest\" -v",
     "test:backend:cov:win": "cd backend/microservices/video_transcript_buddy_service && \"%USERPROFILE%\\runtime_data\\python_venvs\\video_transcript_buddy_venv\\Scripts\\pytest\" -v --cov=. --cov-report=html",
     "test:health:win": "curl -s http://localhost:8000/health",
     "test:api:win": "curl -s http://localhost:8000/",
+    "test:all:win": "bash scripts/backend/apis/run_all_tests.sh",
+    "test:all:custom:win": "set BASE_URL=%BASE_URL% && bash scripts/backend/apis/run_all_tests.sh",
 
     "// ==================== ENV FILE SETUP ====================": "",
     "env:setup:mac": "cp backend/microservices/video_transcript_buddy_service/.env.example backend/microservices/video_transcript_buddy_service/.env && echo '✅ .env file created!'",

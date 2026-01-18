@@ -17,9 +17,9 @@ class RegisterRequest(BaseModel):
     password: str = Field(
         ...,
         min_length=8,
-        max_length=100,
-        description="Password (min 8 characters)",
-        examples=["securepassword123"]
+        max_length=72,
+        description="Password (8-72 characters, bcrypt limit)",
+        examples=["SecurePass123!"]
     )
     
     full_name: str | None = Field(

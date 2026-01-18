@@ -4,8 +4,8 @@
 # =============================================================================
 
 BASE_URL="${BASE_URL:-http://localhost:8000}"
-TEST_EMAIL="testuser_$(date +%s)@example.com"
-TEST_PASSWORD="testpassword123"
+TEST_EMAIL="testuser@example.com"
+TEST_PASSWORD="Test123!"
 
 echo "=========================================="
 echo "🔐 Testing Auth Endpoints"
@@ -20,11 +20,12 @@ REGISTER_RESPONSE=$(curl -s -X POST "$BASE_URL/api/auth/register" \
 echo "$REGISTER_RESPONSE" | python3 -m json.tool
 
 # Extract access token
-ACCESS_TOKEN=$(echo "$REGISTER_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin).get('data', {}).get('access_token', ''))" 2>/dev/null)
-REFRESH_TOKEN=$(echo "$REGISTER_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin).get('data', {}).get('refresh_token', ''))" 2>/dev/null)
+ACCESS_TOKEN=$(echo "$REGISTER_RESPONSE" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('access_token', data.get('data', {}).get('access_token', '')))" 2>/dev/null)
+REFRESH_TOKEN=$(echo "$REGISTER_RESPONSE" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('refresh_token', data.get('data', {}).get('refresh_token', '')))" 2>/dev/null)
 
+# Always try login if registration failed or user already exists
 if [ -z "$ACCESS_TOKEN" ]; then
-  echo "❌ Registration failed, trying login..."
+  echo "📝 Registration failed or user exists, attempting login..."
   
   # Test Login
   echo -e "\n📍 POST /api/auth/login"
@@ -34,8 +35,8 @@ if [ -z "$ACCESS_TOKEN" ]; then
   
   echo "$LOGIN_RESPONSE" | python3 -m json.tool
   
-  ACCESS_TOKEN=$(echo "$LOGIN_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin).get('data', {}).get('access_token', ''))" 2>/dev/null)
-  REFRESH_TOKEN=$(echo "$LOGIN_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin).get('data', {}).get('refresh_token', ''))" 2>/dev/null)
+  ACCESS_TOKEN=$(echo "$LOGIN_RESPONSE" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('access_token', data.get('data', {}).get('access_token', '')))" 2>/dev/null)
+  REFRESH_TOKEN=$(echo "$LOGIN_RESPONSE" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('refresh_token', data.get('data', {}).get('refresh_token', '')))" 2>/dev/null)
 fi
 
 # Test Refresh Token
