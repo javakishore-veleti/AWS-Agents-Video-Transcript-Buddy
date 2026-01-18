@@ -27,7 +27,7 @@ export class TranscriptService {
    */
   getTranscripts(): Observable<TranscriptListResponse> {
     this.loadingSubject.next(true);
-    return this.api.get<TranscriptListResponse>('/api/transcripts').pipe(
+    return this.api.get<TranscriptListResponse>('/api/transcripts/').pipe(
       tap({
         next: (response) => {
           this.transcriptsSubject.next(response.transcripts || []);

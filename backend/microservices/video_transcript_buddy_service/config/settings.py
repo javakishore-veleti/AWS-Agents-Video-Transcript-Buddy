@@ -63,10 +63,15 @@ class Settings(BaseSettings):
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     
-    # S3 Settings
+    # AWS S3 Settings (Optional)
+    USE_S3_STORAGE: bool = False  # Set to True to use S3, False for local storage
     S3_BUCKET_NAME: Optional[str] = "video-transcript-buddy-bucket"
     S3_TRANSCRIPT_FOLDER: str = "transcripts"
     S3_ARCHIVE_FOLDER: str = "archive"
+    
+    # Local Storage Settings
+    LOCAL_STORAGE_PATH: str = "./data/transcripts"  # Local directory for transcript files
+    LOCAL_ARCHIVE_PATH: str = "./data/archive"  # Local directory for archived files
     
     # -----------------------------------------------------------------------------
     # OpenAI Settings

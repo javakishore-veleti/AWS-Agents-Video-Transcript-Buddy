@@ -4,10 +4,15 @@ Transcript Service - Business logic for transcript operations.
 
 import logging
 from typing import List, Optional, Dict, Any
+from sqlalchemy.orm import Session
+from datetime import datetime
 
 from .interfaces.transcript_service_interface import ITranscriptService
 from dao.s3_dao import S3DAO
+from dao.local_storage_dao import LocalStorageDAO
 from dao.vector_store_dao import VectorStoreDAO
+from models.transcript import Transcript
+from config import settings
 from common.exceptions import TranscriptNotFoundException, ValidationException
 from utils.text_utils import is_supported_file, validate_file_size
 
@@ -20,17 +25,26 @@ class TranscriptService(ITranscriptService):
     def __init__(
         self,
         s3_dao: Optional[S3DAO] = None,
+        local_storage_dao: Optional[LocalStorageDAO] = None,
         vector_store_dao: Optional[VectorStoreDAO] = None
     ):
         """
         Initialize transcript service.
         
         Args:
-            s3_dao: S3 data access object
+            s3_dao: S3 data access object (optional, only if USE_S3_STORAGE is True)
+            local_storage_dao: Local storage data access object
             vector_store_dao: Vector store data access object
         """
-        self.s3_dao = s3_dao or S3DAO()
+        self.use_s3 = settings.USE_S3_STORAGE
+        self.s3_dao = s3_dao if self.use_s3 else None
+        self.local_storage_dao = local_storage_dao or LocalStorageDAO()
         self.vector_store_dao = vector_store_dao or VectorStoreDAO()
+        
+        if self.use_s3 and self.s3_dao is None:
+            self.s3_dao = S3DAO()
+        
+        logger.info(f"TranscriptService initialized with storage: {'S3' if self.use_s3 else 'Local'}")
     
     async def upload_transcript(
         self,

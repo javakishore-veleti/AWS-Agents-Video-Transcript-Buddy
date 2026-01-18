@@ -7,7 +7,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 
 from config.database import get_db
-from services.transcript_service import TranscriptService
+from services.transcript_service_v2 import TranscriptServiceV2
 from services.usage_service import UsageService
 from api.models.request_models import ReindexRequest
 from api.models.response_models import (
@@ -29,7 +29,7 @@ from common.exceptions import (
 router = APIRouter()
 
 # Initialize service
-transcript_service = TranscriptService()
+transcript_service = TranscriptServiceV2()
 
 
 @router.post(
@@ -56,19 +56,19 @@ async def upload_transcript(
         
         # Check file size limit for tier
         tier_limits = get_tier_limits(current_user.tier)
-        if len(content) > tier_limits.max_file_size_bytes:
+        file_size_mb = len(content) / (1024 * 1024)
+        if file_size_mb > tier_limits.max_file_size_mb:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail={
-                    "error": True,
-                    "error_code": "FILE_TOO_LARGE",
-                    "message": f"File exceeds {tier_limits.max_file_size_mb}MB limit for {current_user.tier} tier"
-                }
+                detail=f"File size exceeds limit for {current_user.tier} tier"
             )
         
+        # Upload transcript
         result = await transcript_service.upload_transcript(
             filename=file.filename,
             content=content,
+            user_id=current_user.id,
+            db=db,
             auto_index=auto_index
         )
         
@@ -76,13 +76,13 @@ async def upload_transcript(
         usage_service = UsageService(db)
         usage_service.record_upload(
             user_id=current_user.id,
-            file_size_bytes=len(content),
-            filename=file.filename
+            filename=file.filename,
+            file_size_bytes=len(content)
         )
         
         return UploadResponse(
             success=True,
-            message=f"Transcript '{file.filename}' uploaded successfully",
+            message=f"Successfully uploaded {file.filename}",
             data=result
         )
     
@@ -91,11 +91,11 @@ async def upload_transcript(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=e.to_dict()
         )
-    
-    except S3ConnectionException as e:
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=e.to_dict()
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
         )
 
 
@@ -106,13 +106,14 @@ async def upload_transcript(
     description="Get a list of all uploaded transcripts"
 )
 async def list_transcripts(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ) -> TranscriptListResponse:
     """
     List all transcripts with their indexing status.
     """
     try:
-        transcripts = await transcript_service.list_transcripts()
+        transcripts = await transcript_service.list_transcripts(db, user_id=current_user.id)
         
         return TranscriptListResponse(
             success=True,

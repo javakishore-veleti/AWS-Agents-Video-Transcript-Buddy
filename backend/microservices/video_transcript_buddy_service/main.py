@@ -11,11 +11,15 @@ API Documentation:
 """
 
 import logging
+import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from alembic.config import Config
+from alembic import command
 
 from config import settings, init_db
 from api.routes import health_router, transcript_router, query_router, auth_router, usage_router
@@ -38,6 +42,20 @@ async def lifespan(app: FastAPI):
     logger.info(f"AWS Region: {settings.AWS_REGION}")
     logger.info(f"S3 Bucket: {settings.S3_BUCKET_NAME or '(not configured)'}")
     logger.info(f"Database: {'SQLite' if settings.is_sqlite else 'PostgreSQL'}")
+    
+    # Run database migrations
+    # Temporarily disabled - using init_db() instead
+    # try:
+    #     logger.info("Running database migrations...")
+    #     # Get absolute path to alembic.ini
+    #     base_dir = Path(__file__).resolve().parent
+    #     alembic_ini_path = base_dir / "alembic.ini"
+    #     alembic_cfg = Config(str(alembic_ini_path))
+    #     command.upgrade(alembic_cfg, "head")
+    #     logger.info("Database migrations completed successfully")
+    # except Exception as e:
+    #     logger.error(f"Database migration failed: {e}")
+    #     raise
     
     # Initialize database
     init_db()
