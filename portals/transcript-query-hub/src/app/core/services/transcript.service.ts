@@ -39,6 +39,13 @@ export class TranscriptService {
   }
 
   /**
+   * Alias for getTranscripts
+   */
+  listTranscripts(): Observable<TranscriptListResponse> {
+    return this.getTranscripts();
+  }
+
+  /**
    * Get single transcript by filename
    */
   getTranscript(filename: string): Observable<Transcript> {

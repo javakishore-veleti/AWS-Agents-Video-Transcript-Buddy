@@ -42,6 +42,21 @@ export class StorageService {
   }
 
   /**
+   * Alias methods for backward compatibility
+   */
+  getItem(key: string): string | null {
+    return localStorage.getItem(this.prefix + key);
+  }
+
+  setItem(key: string, value: string): void {
+    localStorage.setItem(this.prefix + key, value);
+  }
+
+  removeItem(key: string): void {
+    localStorage.removeItem(this.prefix + key);
+  }
+
+  /**
    * Clear all app-related items from localStorage
    */
   clear(): void {

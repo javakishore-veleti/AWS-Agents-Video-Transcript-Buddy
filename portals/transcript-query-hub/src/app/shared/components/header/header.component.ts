@@ -1,6 +1,6 @@
-import { Component, OnInit, HostListener, signal } from '@angular/core';
+import { Component, OnInit, HostListener, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { 
   faMagnifyingGlass, 
@@ -10,8 +10,13 @@ import {
   faXmark,
   faCircleQuestion,
   faGear,
-  faHome
+  faHome,
+  faUser,
+  faRightFromBracket,
+  faChartLine,
+  faMessage
 } from '@fortawesome/free-solid-svg-icons';
+import { AuthService } from '../../../core/services';
 
 interface NavItem {
   label: string;
@@ -50,7 +55,7 @@ interface NavItem {
 
           <!-- Desktop Navigation -->
           <div class="hidden md:flex items-center gap-1">
-            @for (item of navItems; track item.route) {
+            @for (item of visibleNavItems(); track item.route) {
               <a [routerLink]="item.route" 
                  routerLinkActive="nav-link-active"
                  [routerLinkActiveOptions]="{exact: item.exact ?? false}"
@@ -63,19 +68,49 @@ interface NavItem {
 
           <!-- Desktop Actions -->
           <div class="hidden md:flex items-center gap-3">
-            <button class="p-2 rounded-full hover:bg-gray-100 transition-colors" 
-                    title="Help & Support">
-              <fa-icon [icon]="faCircleQuestion" class="text-gray-500 hover:text-tq-primary-600"></fa-icon>
-            </button>
-            <button class="p-2 rounded-full hover:bg-gray-100 transition-colors"
-                    title="Settings">
-              <fa-icon [icon]="faGear" class="text-gray-500 hover:text-tq-primary-600"></fa-icon>
-            </button>
-            <a routerLink="/search" class="btn btn-primary btn-sm shadow-lg shadow-tq-primary-500/25
-                                          hover:shadow-tq-glow transition-all duration-300">
-              <fa-icon [icon]="faMagnifyingGlass"></fa-icon>
-              Start Searching
-            </a>
+            @if (isAuthenticated()) {
+              <!-- User Menu -->
+              <div class="relative">
+                <button 
+                  (click)="toggleUserMenu()"
+                  class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors">
+                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-tq-primary-600 to-tq-secondary-600 flex items-center justify-center">
+                    <span class="text-white text-sm font-semibold">{{ getUserInitials() }}</span>
+                  </div>
+                  <div class="text-left">
+                    <p class="text-sm font-medium text-gray-900">{{ user()?.email }}</p>
+                    <p class="text-xs text-gray-500">{{ user()?.tier }}</p>
+                  </div>
+                </button>
+                
+                <!-- Dropdown -->
+                @if (isUserMenuOpen()) {
+                  <div class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                    <a routerLink="/usage" 
+                       class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                       (click)="closeUserMenu()">
+                      <fa-icon [icon]="faChartLine"></fa-icon>
+                      Usage & Billing
+                    </a>
+                    <button 
+                      (click)="logout()"
+                      class="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                      <fa-icon [icon]="faRightFromBracket"></fa-icon>
+                      Logout
+                    </button>
+                  </div>
+                }
+              </div>
+            } @else {
+              <!-- Login/Register Buttons -->
+              <a routerLink="/login" class="text-sm font-medium text-gray-700 hover:text-tq-primary-600 transition-colors">
+                Login
+              </a>
+              <a routerLink="/register" class="btn btn-primary btn-sm shadow-lg shadow-tq-primary-500/25
+                                            hover:shadow-tq-glow transition-all duration-300">
+                Get Started
+              </a>
+            }
           </div>
 
           <!-- Mobile Menu Button -->
@@ -93,7 +128,7 @@ interface NavItem {
         @if (isMobileMenuOpen()) {
           <div class="md:hidden animate-fade-in-down">
             <div class="py-4 space-y-1 border-t border-gray-200">
-              @for (item of navItems; track item.route) {
+              @for (item of visibleNavItems(); track item.route) {
                 <a [routerLink]="item.route" 
                    routerLinkActive="mobile-nav-link-active"
                    [routerLinkActiveOptions]="{exact: item.exact ?? false}"
@@ -103,13 +138,32 @@ interface NavItem {
                   {{ item.label }}
                 </a>
               }
-              <div class="pt-4 mt-4 border-t border-gray-200">
-                <a routerLink="/search" 
-                   class="btn btn-primary w-full justify-center"
-                   (click)="closeMobileMenu()">
-                  <fa-icon [icon]="faMagnifyingGlass"></fa-icon>
-                  Start Searching
-                </a>
+              <div class="pt-4 mt-4 border-t border-gray-200 space-y-2">
+                @if (isAuthenticated()) {
+                  <a routerLink="/usage" 
+                     class="btn btn-secondary w-full justify-center"
+                     (click)="closeMobileMenu()">
+                    <fa-icon [icon]="faChartLine"></fa-icon>
+                    Usage & Billing
+                  </a>
+                  <button 
+                    (click)="logout()"
+                    class="btn btn-outline w-full justify-center text-red-600 border-red-600 hover:bg-red-50">
+                    <fa-icon [icon]="faRightFromBracket"></fa-icon>
+                    Logout
+                  </button>
+                } @else {
+                  <a routerLink="/login" 
+                     class="btn btn-secondary w-full justify-center"
+                     (click)="closeMobileMenu()">
+                    Login
+                  </a>
+                  <a routerLink="/register" 
+                     class="btn btn-primary w-full justify-center"
+                     (click)="closeMobileMenu()">
+                    Get Started
+                  </a>
+                }
               </div>
             </div>
           </div>
@@ -152,18 +206,42 @@ export class HeaderComponent implements OnInit {
   faCircleQuestion = faCircleQuestion;
   faGear = faGear;
   faHome = faHome;
+  faUser = faUser;
+  faRightFromBracket = faRightFromBracket;
+  faChartLine = faChartLine;
+  faMessage = faMessage;
 
   // State
   isScrolled = signal(false);
   isMobileMenuOpen = signal(false);
+  isUserMenuOpen = signal(false);
+  
+  // Auth state
+  isAuthenticated = this.authService.isAuthenticated;
+  user = computed(() => this.authService.getCurrentUser());
 
   // Navigation items
-  navItems: NavItem[] = [
+  private allNavItems: NavItem[] = [
     { label: 'Home', route: '/', icon: faHome, exact: true },
     { label: 'Search', route: '/search', icon: faMagnifyingGlass },
+    { label: 'Chat', route: '/chat', icon: faMessage },
     { label: 'Transcripts', route: '/transcripts', icon: faFileLines },
     { label: 'Upload', route: '/upload', icon: faCloudArrowUp },
   ];
+
+  // Filter nav items based on auth state
+  visibleNavItems = computed(() => {
+    const authenticated = this.isAuthenticated();
+    if (authenticated) {
+      return this.allNavItems; // Show all items when logged in
+    }
+    return this.allNavItems.filter(item => item.route === '/'); // Only home when logged out
+  });
+
+  constructor(
+    private authService: AuthService,
+    private router: Router
+  ) {}
 
   ngOnInit(): void {
     this.checkScroll();
@@ -172,6 +250,15 @@ export class HeaderComponent implements OnInit {
   @HostListener('window:scroll')
   onWindowScroll(): void {
     this.checkScroll();
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    // Close user menu when clicking outside
+    const target = event.target as HTMLElement;
+    if (!target.closest('.relative')) {
+      this.isUserMenuOpen.set(false);
+    }
   }
 
   private checkScroll(): void {
@@ -184,5 +271,26 @@ export class HeaderComponent implements OnInit {
 
   closeMobileMenu(): void {
     this.isMobileMenuOpen.set(false);
+  }
+
+  toggleUserMenu(): void {
+    this.isUserMenuOpen.update(value => !value);
+  }
+
+  closeUserMenu(): void {
+    this.isUserMenuOpen.set(false);
+  }
+
+  getUserInitials(): string {
+    const email = this.user()?.email;
+    if (!email) return 'U';
+    return email.charAt(0).toUpperCase();
+  }
+
+  logout(): void {
+    this.authService.logout();
+    this.closeUserMenu();
+    this.closeMobileMenu();
+    this.router.navigate(['/']);
   }
 }

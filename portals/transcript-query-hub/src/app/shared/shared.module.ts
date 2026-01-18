@@ -25,7 +25,7 @@ import { MatRippleModule } from '@angular/material/core';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 
 // Components
-import { HeaderComponent } from './components/header/header.component';
+// import { HeaderComponent } from './components/header/header.component'; // Now standalone
 import { FooterComponent } from './components/footer/footer.component';
 import { LoadingSpinnerComponent } from './components/loading-spinner/loading-spinner.component';
 import { SearchBoxComponent } from './components/search-box/search-box.component';
@@ -67,7 +67,7 @@ const MATERIAL_MODULES = [
 ];
 
 const COMPONENTS = [
-  HeaderComponent,
+  // HeaderComponent, // Now standalone, imported directly where needed
   FooterComponent,
   LoadingSpinnerComponent,
   SearchBoxComponent,
