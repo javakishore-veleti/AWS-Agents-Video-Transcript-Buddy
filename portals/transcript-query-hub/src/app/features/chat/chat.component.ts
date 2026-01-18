@@ -1,8 +1,11 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { TranscriptService, QueryService, ToastService } from '../../core/services';
+import { TranscriptService, QueryService, ToastService, ConversationService } from '../../core/services';
+import { LLMService, LLMProviderInfo } from '../../core/services/llm.service';
 import { Transcript } from '../../core/models';
+import { LLMProvider } from '../../core/models/conversation.model';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -14,7 +17,7 @@ interface Message {
 @Component({
   selector: 'app-chat',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, RouterModule, FormsModule],
   template: `
     <div class="min-h-screen bg-gray-50">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -22,16 +25,149 @@ interface Message {
           
           <!-- Header -->
           <div class="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4 text-white">
-            <h1 class="text-2xl font-bold">Transcript Chat</h1>
-            <p class="text-sm text-blue-100 mt-1">Ask questions about your transcripts</p>
+            <div class="flex items-center justify-between">
+              <div>
+                <h1 class="text-2xl font-bold">Transcript Chat</h1>
+                <p class="text-sm text-blue-100 mt-1">
+                  @if (selectedConversation()) {
+                    {{ selectedConversation()!.name }} • {{ selectedConversation()!.file_count }} files
+                  } @else {
+                    No conversation selected
+                  }
+                </p>
+              </div>
+              <a routerLink="/conversations" class="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm transition-colors">
+                Change Conversation
+              </a>
+            </div>
           </div>
 
           <div class="flex h-full" style="height: calc(100% - 80px);">
             
-            <!-- Sidebar - File Selection -->
+            <!-- Sidebar - File Selection & AI Settings -->
             <div class="w-80 border-r border-gray-200 bg-gray-50 overflow-y-auto">
               <div class="p-4">
-                <h2 class="text-lg font-semibold text-gray-900 mb-4">Select Transcripts</h2>
+                <!-- AI Model Settings -->
+                <div class="mb-6">
+                  <h2 class="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    AI Model
+                  </h2>
+                  
+                  <!-- Available Providers -->
+                  <div class="mb-3">
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Provider</label>
+                    <div class="space-y-1">
+                      @for (provider of availableProviders(); track provider.provider) {
+                        <button
+                          type="button"
+                          (click)="selectProvider(provider)"
+                          [class.ring-2]="formProvider === provider.provider"
+                          [class.ring-blue-500]="formProvider === provider.provider"
+                          [class.bg-blue-50]="formProvider === provider.provider"
+                          [disabled]="!provider.available"
+                          class="w-full p-2 border rounded text-left transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 text-xs flex items-center justify-between">
+                          <div>
+                            <span class="font-medium">{{ provider.name }}</span>
+                            <span class="text-gray-500 ml-1">{{ provider.description }}</span>
+                          </div>
+                          <span [class.text-green-600]="provider.available" [class.text-gray-400]="!provider.available">
+                            {{ provider.available ? (provider.is_local ? '✓ Local' : '✓ Cloud') : '✗' }}
+                          </span>
+                        </button>
+                      }
+                    </div>
+                  </div>
+                  
+                  <!-- Coming Soon Providers (collapsed) -->
+                  <details class="mb-3">
+                    <summary class="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                      More providers coming soon...
+                    </summary>
+                    <div class="mt-2 space-y-1">
+                      @for (provider of comingSoonProviders(); track provider.provider) {
+                        <div class="p-2 border border-dashed rounded text-xs text-gray-400 flex items-center justify-between">
+                          <div>
+                            <span class="font-medium">{{ provider.name }}</span>
+                            <span class="ml-1">{{ provider.description }}</span>
+                          </div>
+                          <span class="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                            {{ provider.eta || 'Coming Soon' }}
+                          </span>
+                        </div>
+                      }
+                    </div>
+                  </details>
+                  
+                  <!-- Model Selection -->
+                  <div class="mb-3">
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Model</label>
+                    @if (loadingModels()) {
+                      <div class="text-gray-500 text-xs">Loading...</div>
+                    } @else if (availableModels().length > 0) {
+                      <select
+                        [(ngModel)]="formModel"
+                        (ngModelChange)="saveConversationSettings()"
+                        class="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        @for (model of availableModels(); track model) {
+                          <option [value]="model">{{ model }}</option>
+                        }
+                      </select>
+                    } @else {
+                      <div class="text-gray-500 text-xs">
+                        @if (formProvider === 'ollama') {
+                          Run: <code class="bg-gray-100 px-1 rounded">ollama pull llama3.2</code>
+                        } @else if (formProvider === 'lmstudio') {
+                          Load a model in LM Studio
+                        } @else {
+                          No models available
+                        }
+                      </div>
+                    }
+                  </div>
+                  
+                  <!-- Temperature -->
+                  <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">
+                      Temperature: {{ formTemperature }}
+                    </label>
+                    <input
+                      type="range"
+                      [(ngModel)]="formTemperature"
+                      (ngModelChange)="saveConversationSettings()"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      class="w-full h-1.5">
+                    <div class="flex justify-between text-xs text-gray-400">
+                      <span>Precise</span>
+                      <span>Creative</span>
+                    </div>
+                  </div>
+                  
+                  @if (selectedProviderInfo()?.is_local) {
+                    <p class="text-xs text-green-600 mt-2">🔒 Local - Free & Private</p>
+                  } @else if (selectedProviderInfo() && !selectedProviderInfo()?.is_local) {
+                    <p class="text-xs text-amber-600 mt-2">☁️ Cloud - API costs may apply</p>
+                  }
+                </div>
+                
+                <hr class="mb-4 border-gray-200">
+                
+                <!-- Transcript Selection -->
+                <h2 class="text-lg font-semibold text-gray-900 mb-2">Select Transcripts</h2>
+                @if (selectedConversation()) {
+                  <p class="text-xs text-gray-600 mb-4">From: {{ selectedConversation()!.name }}</p>
+                } @else {
+                  <div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p class="text-sm text-yellow-800">No conversation selected</p>
+                    <a routerLink="/conversations" class="text-sm text-yellow-900 font-medium hover:underline">
+                      Select a conversation →
+                    </a>
+                  </div>
+                }
                 
                 <div *ngIf="loading" class="text-center py-8">
                   <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -49,19 +185,19 @@ interface Message {
                 <div class="space-y-2" *ngIf="!loading">
                   <div 
                     *ngFor="let transcript of transcripts"
-                    (click)="toggleTranscript(transcript.filename)"
+                    (click)="toggleTranscript(transcript.id)"
                     class="p-3 rounded-lg border cursor-pointer transition-all"
-                    [class.border-blue-500]="selectedFiles().includes(transcript.filename)"
-                    [class.bg-blue-50]="selectedFiles().includes(transcript.filename)"
-                    [class.border-gray-200]="!selectedFiles().includes(transcript.filename)"
-                    [class.hover:border-gray-300]="!selectedFiles().includes(transcript.filename)"
+                    [class.border-blue-500]="selectedTranscriptIds().includes(transcript.id)"
+                    [class.bg-blue-50]="selectedTranscriptIds().includes(transcript.id)"
+                    [class.border-gray-200]="!selectedTranscriptIds().includes(transcript.id)"
+                    [class.hover:border-gray-300]="!selectedTranscriptIds().includes(transcript.id)"
                   >
                     <div class="flex items-start">
                       <input
                         type="checkbox"
-                        [checked]="selectedFiles().includes(transcript.filename)"
+                        [checked]="selectedTranscriptIds().includes(transcript.id)"
                         (click)="$event.stopPropagation()"
-                        (change)="toggleTranscript(transcript.filename)"
+                        (change)="toggleTranscript(transcript.id)"
                         class="mt-1 h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                       />
                       <div class="ml-3 flex-1 min-w-0">
@@ -69,7 +205,7 @@ interface Message {
                           {{ transcript.filename }}
                         </p>
                         <p class="text-xs text-gray-500 mt-1">
-                          {{ formatSize(transcript.size || 0) }}
+                          {{ formatSize(transcript.file_size || transcript.size || 0) }}
                           <span *ngIf="transcript.chunk_count" class="ml-2">
                             • {{ transcript.chunk_count }} chunks
                           </span>
@@ -79,9 +215,9 @@ interface Message {
                   </div>
                 </div>
 
-                <div class="mt-4 p-3 bg-blue-50 rounded-lg" *ngIf="selectedFiles().length > 0">
+                <div class="mt-4 p-3 bg-blue-50 rounded-lg" *ngIf="selectedTranscriptIds().length > 0">
                   <p class="text-sm font-medium text-blue-900">
-                    {{ selectedFiles().length }} file(s) selected
+                    {{ selectedTranscriptIds().length }} file(s) selected
                   </p>
                   <button
                     (click)="clearSelection()"
@@ -170,12 +306,12 @@ interface Message {
                     name="message"
                     type="text"
                     placeholder="Ask anything about your transcripts..."
-                    [disabled]="selectedFiles().length === 0 || querying"
+                    [disabled]="selectedTranscriptIds().length === 0 || querying"
                     class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
                   />
                   <button
                     type="submit"
-                    [disabled]="!currentMessage.trim() || selectedFiles().length === 0 || querying"
+                    [disabled]="!currentMessage.trim() || selectedTranscriptIds().length === 0 || querying"
                     class="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -183,7 +319,7 @@ interface Message {
                     </svg>
                   </button>
                 </form>
-                <p class="text-xs text-gray-500 mt-2" *ngIf="selectedFiles().length === 0">
+                <p class="text-xs text-gray-500 mt-2" *ngIf="selectedTranscriptIds().length === 0">
                   Please select at least one transcript to start chatting
                 </p>
               </div>
@@ -201,12 +337,41 @@ interface Message {
   `]
 })
 export class ChatComponent implements OnInit {
+  private conversationService = inject(ConversationService);
+  private llmService = inject(LLMService);
+  
   transcripts: Transcript[] = [];
-  selectedFiles = signal<string[]>([]);
+  selectedTranscriptIds = signal<string[]>([]);  // Track by transcript ID (UUID)
   messages: Message[] = [];
   currentMessage = '';
   loading = false;
   querying = false;
+  
+  selectedConversation = this.conversationService.selectedConversation;
+  
+  // LLM settings
+  formProvider: LLMProvider = 'openai';
+  formModel = 'gpt-4';
+  formTemperature = 0.7;
+  
+  // LLM provider data
+  llmProviders = signal<LLMProviderInfo[]>([]);
+  availableModels = signal<string[]>([]);
+  loadingModels = signal(false);
+  
+  // Computed: available providers (status = 'available')
+  availableProviders = computed(() => 
+    this.llmProviders().filter(p => p.status === 'available' || !p.status)
+  );
+  
+  // Computed: coming soon providers
+  comingSoonProviders = computed(() => 
+    this.llmProviders().filter(p => p.status === 'coming_soon')
+  );
+  
+  selectedProviderInfo = computed(() => 
+    this.llmProviders().find(p => p.provider === this.formProvider)
+  );
 
   constructor(
     private transcriptService: TranscriptService,
@@ -216,13 +381,97 @@ export class ChatComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadTranscripts();
+    this.loadLLMProviders();
+    this.loadConversationSettings();
+  }
+  
+  loadLLMProviders() {
+    this.llmService.listProviders().subscribe({
+      next: (providers) => {
+        this.llmProviders.set(providers);
+        // Set default provider to first available if not set
+        if (!this.formProvider) {
+          const available = providers.find(p => p.available && p.status !== 'coming_soon');
+          if (available) {
+            this.formProvider = available.provider as LLMProvider;
+            this.loadModelsForProvider(available.provider);
+          }
+        } else {
+          this.loadModelsForProvider(this.formProvider);
+        }
+      },
+      error: () => {
+        this.llmProviders.set([
+          { provider: 'openai', name: 'OpenAI', description: 'GPT-4, GPT-3.5', available: false, status: 'available', models: [], requires_api_key: true, is_local: false },
+          { provider: 'ollama', name: 'Ollama', description: 'Local LLMs', available: false, status: 'available', models: [], requires_api_key: false, is_local: true },
+          { provider: 'lmstudio', name: 'LM Studio', description: 'Local', available: false, status: 'available', models: [], requires_api_key: false, is_local: true },
+          { provider: 'gemini', name: 'Google Gemini', description: 'Gemini Pro', available: false, status: 'coming_soon', models: [], requires_api_key: true, is_local: false, eta: 'Q2 2026' },
+          { provider: 'claude', name: 'Anthropic Claude', description: 'Claude 3', available: false, status: 'coming_soon', models: [], requires_api_key: true, is_local: false, eta: 'Q2 2026' },
+          { provider: 'copilot', name: 'MS Copilot', description: 'Azure', available: false, status: 'coming_soon', models: [], requires_api_key: true, is_local: false, eta: 'Q3 2026' },
+          { provider: 'n8n', name: 'n8n Agentic', description: 'Workflows', available: false, status: 'coming_soon', models: [], requires_api_key: true, is_local: false, eta: 'Q3 2026' },
+          { provider: 'mcp', name: 'MCP Server', description: 'Tools', available: false, status: 'coming_soon', models: [], requires_api_key: false, is_local: false, eta: 'Q2 2026' }
+        ]);
+      }
+    });
+  }
+  
+  loadConversationSettings() {
+    const conv = this.selectedConversation();
+    if (conv) {
+      this.formProvider = (conv.llm_provider || 'openai') as LLMProvider;
+      this.formModel = conv.llm_model || 'gpt-4';
+      this.formTemperature = conv.llm_temperature ?? 0.7;
+    }
+  }
+  
+  selectProvider(provider: LLMProviderInfo) {
+    if (!provider.available) return;
+    
+    this.formProvider = provider.provider as LLMProvider;
+    this.formModel = '';
+    this.loadModelsForProvider(provider.provider);
+    this.saveConversationSettings();
+  }
+  
+  loadModelsForProvider(provider: string) {
+    this.loadingModels.set(true);
+    this.llmService.getProviderModels(provider).subscribe({
+      next: (models) => {
+        this.availableModels.set(models);
+        if (models.length > 0 && !this.formModel) {
+          this.formModel = models[0];
+        }
+        this.loadingModels.set(false);
+      },
+      error: () => {
+        this.availableModels.set([]);
+        this.loadingModels.set(false);
+      }
+    });
+  }
+  
+  saveConversationSettings() {
+    const conv = this.selectedConversation();
+    if (!conv) return;
+    
+    this.conversationService.updateConversation(conv.id, {
+      llm_provider: this.formProvider,
+      llm_model: this.formModel,
+      llm_temperature: this.formTemperature
+    }).subscribe();
   }
 
   loadTranscripts(): void {
     this.loading = true;
-    this.transcriptService.listTranscripts().subscribe({
+    
+    // Get the selected conversation ID to filter transcripts on server-side
+    const currentConvId = this.selectedConversation()?.id;
+    
+    this.transcriptService.listTranscripts(currentConvId || undefined).subscribe({
       next: (response: any) => {
-        this.transcripts = response.data || [];
+        // Backend filters by conversation and returns data field
+        this.transcripts = response.data || response.transcripts || [];
+        console.log('Loaded transcripts for conversation:', currentConvId, this.transcripts);
       },
       error: (error) => {
         this.toast.error('Failed to load transcripts', error.message);
@@ -233,25 +482,25 @@ export class ChatComponent implements OnInit {
     });
   }
 
-  toggleTranscript(filename: string): void {
-    const current = this.selectedFiles();
-    const index = current.indexOf(filename);
+  toggleTranscript(transcriptId: string): void {
+    const current = this.selectedTranscriptIds();
+    const index = current.indexOf(transcriptId);
     
     if (index > -1) {
-      this.selectedFiles.set(current.filter(f => f !== filename));
+      this.selectedTranscriptIds.set(current.filter(id => id !== transcriptId));
     } else {
-      this.selectedFiles.set([...current, filename]);
+      this.selectedTranscriptIds.set([...current, transcriptId]);
     }
   }
 
   clearSelection(): void {
-    this.selectedFiles.set([]);
+    this.selectedTranscriptIds.set([]);
   }
 
   sendMessage(event: Event): void {
     event.preventDefault();
     
-    if (!this.currentMessage.trim() || this.selectedFiles().length === 0) {
+    if (!this.currentMessage.trim() || this.selectedTranscriptIds().length === 0) {
       return;
     }
 
@@ -267,8 +516,14 @@ export class ChatComponent implements OnInit {
     this.currentMessage = '';
     this.querying = true;
 
-    // Send query to backend
-    const request = { query: question, transcript_ids: this.selectedFiles() };
+    // Send query to backend with transcript IDs (UUIDs) and LLM settings
+    const request = { 
+      question: question, 
+      transcript_ids: this.selectedTranscriptIds(),
+      llm_provider: this.formProvider,
+      llm_model: this.formModel,
+      llm_temperature: this.formTemperature
+    };
     this.queryService.query(request).subscribe({
       next: (response: any) => {
         const assistantMessage: Message = {

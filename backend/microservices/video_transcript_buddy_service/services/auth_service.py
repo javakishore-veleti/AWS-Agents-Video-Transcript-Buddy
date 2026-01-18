@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from .interfaces.auth_service_interface import IAuthService
 from models.user import User
 from utils.auth_utils import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
+from utils.id_encryption import generate_user_encryption_key
 from common.exceptions import ValidationException, AuthenticationException
 
 logger = logging.getLogger(__name__)
@@ -40,12 +41,13 @@ class AuthService(IAuthService):
         if existing:
             raise ValidationException("Email already registered", field="email")
         
-        # Create user
+        # Create user with encryption key
         user = User(
             email=email.lower(),
             hashed_password=hash_password(password),
             full_name=full_name,
-            tier="FREE"
+            tier="FREE",
+            encryption_key=generate_user_encryption_key()  # Per-user key for ID obfuscation
         )
         
         self.db.add(user)

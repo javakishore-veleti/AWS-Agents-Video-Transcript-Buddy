@@ -38,6 +38,7 @@ psycopg2-binary==2.9.9
 passlib[bcrypt]==1.7.4
 bcrypt==4.1.2
 python-jose[cryptography]==3.3.0
+cryptography>=42.0.0  # For Fernet encryption (user ID encryption)
 
 # Utilities
 python-dotenv==1.0.0

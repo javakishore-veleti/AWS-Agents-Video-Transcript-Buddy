@@ -23,11 +23,16 @@ export class TranscriptService {
   constructor(private api: ApiService) {}
 
   /**
-   * Get all transcripts
+   * Get all transcripts, optionally filtered by conversation
+   * @param conversationId Optional encrypted conversation ID to filter by
    */
-  getTranscripts(): Observable<TranscriptListResponse> {
+  getTranscripts(conversationId?: string): Observable<TranscriptListResponse> {
     this.loadingSubject.next(true);
-    return this.api.get<TranscriptListResponse>('/api/transcripts/').pipe(
+    let url = '/api/transcripts/';
+    if (conversationId) {
+      url += `?conversation_id=${encodeURIComponent(conversationId)}`;
+    }
+    return this.api.get<TranscriptListResponse>(url).pipe(
       tap({
         next: (response) => {
           this.transcriptsSubject.next(response.transcripts || []);
@@ -41,8 +46,8 @@ export class TranscriptService {
   /**
    * Alias for getTranscripts
    */
-  listTranscripts(): Observable<TranscriptListResponse> {
-    return this.getTranscripts();
+  listTranscripts(conversationId?: string): Observable<TranscriptListResponse> {
+    return this.getTranscripts(conversationId);
   }
 
   /**
@@ -54,13 +59,21 @@ export class TranscriptService {
 
   /**
    * Upload a new transcript
+   * @param file The file to upload
+   * @param autoIndex Whether to auto-index the transcript
+   * @param conversationId Encrypted conversation ID (from API)
    */
-  uploadTranscript(file: File, autoIndex: boolean = true): Observable<UploadResponse> {
+  uploadTranscript(file: File, autoIndex: boolean = true, conversationId?: string): Observable<UploadResponse> {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('auto_index', String(autoIndex));
     
-    return this.api.upload<UploadResponse>('/api/transcripts/upload', formData).pipe(
+    // Build URL with query parameters
+    let url = `/api/transcripts/upload?auto_index=${autoIndex}`;
+    if (conversationId !== undefined && conversationId !== null) {
+      url += `&conversation_id=${encodeURIComponent(conversationId)}`;
+    }
+    
+    return this.api.upload<UploadResponse>(url, formData).pipe(
       tap(() => this.getTranscripts().subscribe())
     );
   }

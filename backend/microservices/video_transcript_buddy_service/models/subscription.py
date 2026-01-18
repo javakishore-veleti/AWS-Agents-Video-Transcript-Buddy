@@ -64,10 +64,23 @@ class TierLimits:
     """Limits for a subscription tier."""
     name: TierName
     monthly_price: float
-    max_uploads: int          # -1 for unlimited
-    max_queries: int          # -1 for unlimited
+    
+    # Conversation limits
+    max_conversations: int          # -1 for unlimited
+    max_files_per_conversation: int # -1 for unlimited
+    max_queries_per_conversation: int  # -1 for unlimited
+    max_query_time_seconds: int     # Max time for a single query
+    
+    # File limits
+    max_uploads: int                # Total uploads per month (-1 for unlimited)
+    max_queries: int                # Total queries per month (-1 for unlimited)
     max_file_size_mb: int
-    allowed_models: list      # List of allowed AI models
+    allowed_file_types: list        # ['txt', 'srt', 'vtt', 'json']
+    
+    # AI/Model limits
+    allowed_models: list            # List of allowed AI models
+    max_output_tokens: int          # Max tokens in response
+    enable_intelligent_summary: bool # Advanced analysis features
     
     @property
     def max_file_size_bytes(self) -> int:
@@ -79,34 +92,62 @@ TIERS = {
     TierName.FREE: TierLimits(
         name=TierName.FREE,
         monthly_price=0.0,
+        max_conversations=3,
+        max_files_per_conversation=5,
+        max_queries_per_conversation=10,
+        max_query_time_seconds=30,
         max_uploads=5,
         max_queries=10,
         max_file_size_mb=1,
-        allowed_models=["basic"]
+        allowed_file_types=['txt', 'srt'],
+        allowed_models=["basic"],
+        max_output_tokens=500,
+        enable_intelligent_summary=False
     ),
     TierName.STARTER: TierLimits(
         name=TierName.STARTER,
         monthly_price=29.0,
+        max_conversations=10,
+        max_files_per_conversation=20,
+        max_queries_per_conversation=100,
+        max_query_time_seconds=60,
         max_uploads=50,
         max_queries=500,
         max_file_size_mb=10,
-        allowed_models=["basic", "standard"]
+        allowed_file_types=['txt', 'srt', 'vtt', 'json'],
+        allowed_models=["basic", "standard"],
+        max_output_tokens=2000,
+        enable_intelligent_summary=True
     ),
     TierName.PRO: TierLimits(
         name=TierName.PRO,
         monthly_price=99.0,
+        max_conversations=50,
+        max_files_per_conversation=100,
+        max_queries_per_conversation=1000,
+        max_query_time_seconds=120,
         max_uploads=500,
         max_queries=5000,
         max_file_size_mb=50,
-        allowed_models=["basic", "standard", "advanced"]
+        allowed_file_types=['txt', 'srt', 'vtt', 'json', 'pdf'],
+        allowed_models=["basic", "standard", "advanced"],
+        max_output_tokens=4000,
+        enable_intelligent_summary=True
     ),
     TierName.ENTERPRISE: TierLimits(
         name=TierName.ENTERPRISE,
         monthly_price=-1.0,  # Custom pricing
+        max_conversations=-1,       # Unlimited
+        max_files_per_conversation=-1,  # Unlimited
+        max_queries_per_conversation=-1,  # Unlimited
+        max_query_time_seconds=300,
         max_uploads=-1,       # Unlimited
         max_queries=-1,       # Unlimited
         max_file_size_mb=100,
-        allowed_models=["basic", "standard", "advanced", "gpt-4", "claude"]
+        allowed_file_types=['txt', 'srt', 'vtt', 'json', 'pdf', 'docx'],
+        allowed_models=["basic", "standard", "advanced", "gpt-4", "claude"],
+        max_output_tokens=8000,
+        enable_intelligent_summary=True
     ),
 }
 

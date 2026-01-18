@@ -1,5 +1,6 @@
 export * from './api.service';
 export * from './auth.service';
+export * from './conversation.service';
 export * from './loading.service';
 export * from './query.service';
 export * from './storage.service';

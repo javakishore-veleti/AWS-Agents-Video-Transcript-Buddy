@@ -1,4 +1,4 @@
-import { Component, ViewChild, signal } from '@angular/core';
+import { Component, ViewChild, signal, inject, OnInit, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -9,11 +9,13 @@ import {
   faXmark,
   faArrowRight,
   faFileLines,
-  faCircleInfo
+  faCircleInfo,
+  faComments
 } from '@fortawesome/free-solid-svg-icons';
 import { FileUploadComponent, UploadedFile } from '../../shared/components/file-upload/file-upload.component';
 import { TranscriptService } from '../../core/services/transcript.service';
 import { ToastService } from '../../core/services/toast.service';
+import { ConversationService } from '../../core/services/conversation.service';
 
 @Component({
   selector: 'app-upload',
@@ -39,16 +41,66 @@ import { ToastService } from '../../core/services/toast.service';
 
       <div class="container-app py-8">
         <div class="max-w-3xl mx-auto">
+          <!-- Conversation Selection -->
+          <div class="card p-6 mb-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Select Conversation</h3>
+            
+            @if (conversations().length === 0) {
+              <div class="text-center py-8 bg-gray-50 rounded-lg">
+                <p class="text-gray-600 mb-4">No conversations yet. Create one to upload files.</p>
+                <a routerLink="/conversations" class="btn btn-primary">Create Conversation</a>
+              </div>
+            } @else {
+              <div class="flex gap-3 items-center">
+                <select 
+                  [(ngModel)]="selectedConversationId"
+                  class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                  <option [value]="null">Select a conversation...</option>
+                  @for (conv of conversations(); track conv.id) {
+                    <option [value]="conv.id">
+                      {{ conv.name }} ({{ conv.file_count }} files)
+                    </option>
+                  }
+                </select>
+                <a routerLink="/conversations" class="btn btn-secondary whitespace-nowrap">
+                  + New
+                </a>
+              </div>
+              
+              @if (selectedConversationId && selectedConversation()) {
+                <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div class="flex justify-between items-start">
+                    <div>
+                      <p class="text-sm font-medium text-gray-900">{{ selectedConversation()!.name }}</p>
+                      @if (selectedConversation()!.description) {
+                        <p class="text-sm text-gray-600 mt-1">{{ selectedConversation()!.description }}</p>
+                      }
+                    </div>
+                    <div class="text-sm text-gray-600">
+                      {{ selectedConversation()!.file_count }} / {{ maxFilesPerConversation() === -1 ? '∞' : maxFilesPerConversation() }} files
+                    </div>
+                  </div>
+                </div>
+              }
+            }
+          </div>
+
           <!-- Upload Card -->
-          <div class="card p-8 mb-8">
-            <app-file-upload
-              #fileUpload
-              [acceptedTypes]="'.txt,.srt,.vtt,.json'"
-              [maxSize]="52428800"
-              [maxFiles]="10"
-              (filesSelected)="onFilesSelected($event)"
-              (fileRemoved)="onFileRemoved($event)">
-            </app-file-upload>
+          <div class="card p-8 mb-8" [class.opacity-50]="!selectedConversationId">
+            @if (!selectedConversationId) {
+              <div class="text-center py-12 bg-gray-50 rounded-lg">
+                <p class="text-gray-500">Please select a conversation first</p>
+              </div>
+            } @else {
+              <app-file-upload
+                #fileUpload
+                [acceptedTypes]="'.txt,.srt,.vtt,.json'"
+                [maxSize]="52428800"
+                [maxFiles]="10"
+                (filesSelected)="onFilesSelected($event)"
+                (fileRemoved)="onFileRemoved($event)">
+              </app-file-upload>
+            }
 
             <!-- Options -->
             <div class="mt-6 pt-6 border-t border-gray-200">
@@ -74,7 +126,7 @@ import { ToastService } from '../../core/services/toast.service';
                 </p>
                 <button 
                   (click)="uploadFiles()"
-                  [disabled]="isUploading()"
+                  [disabled]="isUploading() || !selectedConversationId"
                   class="btn btn-primary">
                   @if (isUploading()) {
                     <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -119,13 +171,13 @@ import { ToastService } from '../../core/services/toast.service';
               <!-- Actions after upload -->
               @if (successCount() > 0) {
                 <div class="mt-6 pt-6 border-t border-gray-200 flex flex-wrap gap-3">
+                  <button (click)="goToChat()" class="btn btn-primary">
+                    <fa-icon [icon]="faComments"></fa-icon>
+                    Chat with Files
+                  </button>
                   <a routerLink="/transcripts" class="btn btn-secondary">
                     <fa-icon [icon]="faFileLines"></fa-icon>
-                    View Transcripts
-                  </a>
-                  <a routerLink="/search" class="btn btn-primary">
-                    <fa-icon [icon]="faArrowRight"></fa-icon>
-                    Start Searching
+                    View All Transcripts
                   </a>
                 </div>
               }
@@ -157,9 +209,11 @@ import { ToastService } from '../../core/services/toast.service';
     </div>
   `
 })
-export class UploadComponent {
+export class UploadComponent implements OnInit {
   @ViewChild('fileUpload') fileUpload!: FileUploadComponent;
 
+  private conversationService = inject(ConversationService);
+  
   // Icons
   faCloudArrowUp = faCloudArrowUp;
   faCheck = faCheck;
@@ -167,18 +221,41 @@ export class UploadComponent {
   faArrowRight = faArrowRight;
   faFileLines = faFileLines;
   faCircleInfo = faCircleInfo;
+  faComments = faComments;
 
   // State
+  conversations = this.conversationService.conversations;
+  selectedConversationId: string | null = null;  // Encrypted conversation ID
   selectedFiles = signal<File[]>([]);
   isUploading = signal(false);
   uploadResults = signal<{ filename: string; success: boolean; message: string }[]>([]);
   autoIndex = true;
+
+  selectedConversation = computed(() => {
+    return this.conversations().find(c => c.id === this.selectedConversationId) || null;
+  });
+  
+  maxFilesPerConversation = computed(() => {
+    // TODO: Get from tier limits
+    return 5; // FREE tier default
+  });
 
   constructor(
     private transcriptService: TranscriptService,
     private toast: ToastService,
     private router: Router
   ) {}
+  
+  ngOnInit() {
+    this.conversationService.listConversations().subscribe({
+      next: () => {
+        // Auto-select first conversation if available
+        if (this.conversations().length > 0) {
+          this.selectedConversationId = this.conversations()[0].id;
+        }
+      }
+    });
+  }
 
   get successCount(): () => number {
     return () => this.uploadResults().filter(r => r.success).length;
@@ -194,7 +271,7 @@ export class UploadComponent {
   }
 
   async uploadFiles(): Promise<void> {
-    if (this.selectedFiles().length === 0) return;
+    if (this.selectedFiles().length === 0 || !this.selectedConversationId) return;
 
     this.isUploading.set(true);
     this.uploadResults.set([]);
@@ -207,7 +284,7 @@ export class UploadComponent {
         this.fileUpload.updateFileProgress(file.name, 50);
 
         const response = await this.transcriptService
-          .uploadTranscript(file, this.autoIndex)
+          .uploadTranscript(file, this.autoIndex, this.selectedConversationId)
           .toPromise();
 
         this.fileUpload.updateFileStatus(file.name, 'success');
@@ -215,7 +292,7 @@ export class UploadComponent {
           filename: file.name,
           success: true,
           message: response?.indexed 
-            ? `Uploaded and indexed (${response.chunks_created} chunks)` 
+            ? 'Uploaded and indexed (' + response.chunks_created + ' chunks)' 
             : 'Uploaded successfully'
         });
       } catch (error: any) {
@@ -233,14 +310,28 @@ export class UploadComponent {
 
     const successCount = results.filter(r => r.success).length;
     if (successCount === results.length) {
-      this.toast.success(`All ${successCount} file(s) uploaded successfully!`);
+      this.toast.success('All ' + successCount + ' file(s) uploaded successfully!');
     } else if (successCount > 0) {
-      this.toast.warning(`${successCount} of ${results.length} files uploaded`);
+      this.toast.warning(successCount + ' of ' + results.length + ' files uploaded');
     } else {
       this.toast.error('Upload failed. Please try again.');
     }
 
+    // Refresh conversations to update file counts
+    if (successCount > 0) {
+      this.conversationService.listConversations().subscribe();
+    }
+
     // Clear selected files
     this.selectedFiles.set([]);
+  }
+
+  goToChat(): void {
+    // Select the conversation and navigate to chat
+    const conversation = this.selectedConversation();
+    if (conversation) {
+      this.conversationService.selectConversation(conversation);
+    }
+    this.router.navigate(['/chat']);
   }
 }

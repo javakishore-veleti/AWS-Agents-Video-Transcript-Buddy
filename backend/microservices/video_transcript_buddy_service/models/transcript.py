@@ -3,6 +3,7 @@ Transcript Model - Database model for transcript metadata.
 """
 
 from sqlalchemy import Column, String, Integer, DateTime, Boolean, Text, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from config.database import Base
 import uuid
@@ -14,9 +15,10 @@ class Transcript(Base):
     __tablename__ = "transcripts"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    filename = Column(String, nullable=False, unique=True, index=True)
+    filename = Column(String, nullable=False, index=True)
     original_filename = Column(String, nullable=False)
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False, index=True)
     
     # File metadata
     file_size = Column(Integer, nullable=False)  # Size in bytes
@@ -40,6 +42,9 @@ class Transcript(Base):
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     
+    # Relationships
+    conversation = relationship("Conversation", back_populates="transcripts")
+    
     def to_dict(self):
         """Convert to dictionary."""
         return {
@@ -47,6 +52,7 @@ class Transcript(Base):
             "filename": self.filename,
             "original_filename": self.original_filename,
             "user_id": self.user_id,
+            "conversation_id": self.conversation_id,
             "file_size": self.file_size,
             "file_type": self.file_type,
             "storage_type": self.storage_type,

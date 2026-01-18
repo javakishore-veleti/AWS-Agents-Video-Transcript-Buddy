@@ -1,9 +1,13 @@
 export interface Transcript {
+  id: string;  // Transcript UUID for querying
   filename: string;
+  conversation_id?: string;  // Encrypted conversation ID
   content?: string;
   size?: number;
+  file_size?: number;  // Backend uses file_size
   uploaded_at?: string;
   indexed?: boolean;
+  is_indexed?: boolean;  // Backend uses is_indexed
   chunk_count?: number;
   metadata?: Record<string, any>;
 }

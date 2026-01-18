@@ -2,6 +2,7 @@
 Transcript Routes - REST endpoints for transcript management.
 """
 
+import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Query, Depends
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
@@ -19,12 +20,17 @@ from api.models.response_models import (
 )
 from api.dependencies.auth import get_current_user, check_upload_limit
 from models.user import User
+from models.conversation import Conversation
 from models.subscription import get_tier_limits
+from api.dependencies.id_encryption import get_id_encryptor
+from utils.id_encryption import UserIDEncryptor
 from common.exceptions import (
     TranscriptNotFoundException,
     ValidationException,
     S3ConnectionException
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -42,16 +48,40 @@ transcript_service = TranscriptServiceV2()
 async def upload_transcript(
     file: UploadFile = File(..., description="Transcript file to upload"),
     auto_index: bool = Query(True, description="Automatically index in vector store"),
+    conversation_id: str = Query(..., description="Encrypted conversation ID to associate with transcript"),
     current_user: User = Depends(check_upload_limit),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    encryptor: UserIDEncryptor = Depends(get_id_encryptor)
 ) -> UploadResponse:
     """
     Upload a transcript file.
     
     - **file**: Transcript file (.txt, .srt, .vtt, .json)
     - **auto_index**: Whether to automatically index for searching (default: True)
+    - **conversation_id**: Encrypted ID of the conversation to associate with the transcript
     """
     try:
+        # Decrypt the conversation ID
+        try:
+            decrypted_conversation_id = encryptor.decrypt(conversation_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired conversation ID"
+            )
+        
+        # SECURITY: Verify conversation belongs to current user
+        conversation = db.query(Conversation).filter(
+            Conversation.id == decrypted_conversation_id,
+            Conversation.user_id == current_user.id
+        ).first()
+        
+        if not conversation:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Conversation not found or access denied"
+            )
+        
         content = await file.read()
         
         # Check file size limit for tier
@@ -68,6 +98,7 @@ async def upload_transcript(
             filename=file.filename,
             content=content,
             user_id=current_user.id,
+            conversation_id=decrypted_conversation_id,  # Use decrypted ID
             db=db,
             auto_index=auto_index
         )
@@ -106,19 +137,45 @@ async def upload_transcript(
     description="Get a list of all uploaded transcripts"
 )
 async def list_transcripts(
+    conversation_id: Optional[str] = Query(None, description="Optional: Encrypted conversation ID to filter by"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    encryptor: UserIDEncryptor = Depends(get_id_encryptor)
 ) -> TranscriptListResponse:
     """
     List all transcripts with their indexing status.
+    Optionally filter by conversation_id.
     """
     try:
-        transcripts = await transcript_service.list_transcripts(db, user_id=current_user.id)
+        # Decrypt conversation_id if provided for filtering
+        decrypted_conv_id = None
+        if conversation_id:
+            try:
+                decrypted_conv_id = encryptor.decrypt(conversation_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid or expired conversation ID"
+                )
+        
+        transcripts = await transcript_service.list_transcripts(
+            db, 
+            user_id=current_user.id,
+            conversation_id=decrypted_conv_id
+        )
+        
+        # Encrypt conversation_id in each transcript
+        encrypted_transcripts = []
+        for t in transcripts:
+            t_dict = dict(t) if isinstance(t, dict) else t
+            if 'conversation_id' in t_dict and t_dict['conversation_id'] is not None:
+                t_dict['conversation_id'] = encryptor.encrypt(t_dict['conversation_id'])
+            encrypted_transcripts.append(t_dict)
         
         return TranscriptListResponse(
             success=True,
             message=f"Found {len(transcripts)} transcripts",
-            data=transcripts,
+            data=encrypted_transcripts,
             total=len(transcripts)
         )
     

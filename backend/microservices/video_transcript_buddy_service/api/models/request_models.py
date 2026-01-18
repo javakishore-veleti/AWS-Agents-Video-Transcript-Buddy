@@ -33,12 +33,33 @@ class QueryRequest(BaseModel):
         description="Maximum number of source chunks to consider for answering"
     )
     
+    # LLM settings - optional, will use defaults if not provided
+    llm_provider: Optional[str] = Field(
+        default=None,
+        description="LLM provider: openai, ollama, or lmstudio"
+    )
+    
+    llm_model: Optional[str] = Field(
+        default=None,
+        description="Model name to use for the LLM"
+    )
+    
+    llm_temperature: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Temperature for LLM responses (0-1)"
+    )
+    
     class Config:
         json_schema_extra = {
             "example": {
                 "question": "What are the main topics discussed in the video?",
                 "transcript_ids": None,
-                "max_results": 5
+                "max_results": 5,
+                "llm_provider": "openai",
+                "llm_model": "gpt-4",
+                "llm_temperature": 0.7
             }
         }
 

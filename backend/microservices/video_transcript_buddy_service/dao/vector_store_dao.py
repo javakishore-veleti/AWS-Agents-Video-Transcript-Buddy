@@ -247,6 +247,7 @@ class VectorStoreDAO:
         query: str,
         n_results: int = DEFAULT_SEARCH_RESULTS,
         transcript_ids: Optional[List[str]] = None,
+        user_id: Optional[str] = None,
         min_score: float = 0.0
     ) -> List[Dict[str, Any]]:
         """
@@ -256,11 +257,14 @@ class VectorStoreDAO:
             query: Search query
             n_results: Number of results to return
             transcript_ids: Optional filter by transcript IDs
+            user_id: REQUIRED for multi-tenancy - filters results to user's data only
             min_score: Minimum similarity score (0-1)
             
         Returns:
             List of matching chunks with metadata
         """
+        # SECURITY: Log user_id for audit trail
+        logger.info(f"Vector search by user_id={user_id}, transcript_ids={transcript_ids}")
         n_results = min(n_results, MAX_SEARCH_RESULTS)
         
         try:
@@ -292,6 +296,12 @@ class VectorStoreDAO:
                 
                 # Convert L2 distance to similarity score
                 similarity = 1 / (1 + distance)
+                
+                # SECURITY: Filter by user_id for multi-tenancy (CRITICAL)
+                if user_id:
+                    doc_user_id = doc["metadata"].get("user_id")
+                    if doc_user_id != user_id:
+                        continue  # Skip documents belonging to other users
                 
                 # Filter by transcript_ids if specified
                 if transcript_ids:

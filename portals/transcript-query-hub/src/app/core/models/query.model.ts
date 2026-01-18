@@ -1,5 +1,5 @@
 export interface QueryRequest {
-  query: string;
+  question: string;
   transcript_ids?: string[];
   max_results?: number;
   include_sources?: boolean;

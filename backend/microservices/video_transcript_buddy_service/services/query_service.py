@@ -10,6 +10,7 @@ from typing import List, Optional, Dict, Any
 from openai import OpenAI
 
 from .interfaces.query_service_interface import IQueryService
+from .llm import LLMProviderFactory, LLMProviderConfig, ProviderType
 from dao.vector_store_dao import VectorStoreDAO
 from config import settings
 from common.exceptions import AgentException, ValidationException
@@ -43,11 +44,54 @@ class QueryService(IQueryService):
             self._openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
         return self._openai_client
     
+    def _get_llm_provider(
+        self,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None
+    ):
+        """Get an LLM provider based on configuration."""
+        # Determine provider type
+        provider_type = ProviderType.OPENAI  # Default
+        if provider:
+            provider_lower = provider.lower()
+            if provider_lower == 'ollama':
+                provider_type = ProviderType.OLLAMA
+            elif provider_lower == 'lmstudio':
+                provider_type = ProviderType.LMSTUDIO
+            elif provider_lower == 'openai':
+                provider_type = ProviderType.OPENAI
+        
+        # Set defaults based on provider
+        if model is None:
+            if provider_type == ProviderType.OPENAI:
+                model = settings.OPENAI_MODEL
+            elif provider_type == ProviderType.OLLAMA:
+                model = "llama3.2"
+            elif provider_type == ProviderType.LMSTUDIO:
+                model = "local-model"
+        
+        if temperature is None:
+            temperature = 0.3
+        
+        config = LLMProviderConfig(
+            provider_type=provider_type,
+            model_name=model,
+            temperature=temperature,
+            api_key=settings.OPENAI_API_KEY if provider_type == ProviderType.OPENAI else None
+        )
+        
+        return LLMProviderFactory.create(config)
+    
     async def query(
         self,
         question: str,
         transcript_ids: Optional[List[str]] = None,
-        max_results: int = DEFAULT_SEARCH_RESULTS
+        user_id: Optional[str] = None,
+        max_results: int = DEFAULT_SEARCH_RESULTS,
+        llm_provider: Optional[str] = None,
+        llm_model: Optional[str] = None,
+        llm_temperature: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Process a user query against transcripts.
@@ -55,7 +99,11 @@ class QueryService(IQueryService):
         Args:
             question: User's question
             transcript_ids: Optional filter by specific transcripts
+            user_id: REQUIRED for multi-tenancy - ensures user only sees their data
             max_results: Maximum number of source chunks to consider
+            llm_provider: Optional LLM provider (openai, ollama, lmstudio)
+            llm_model: Optional model name
+            llm_temperature: Optional temperature (0-1)
             
         Returns:
             Dict with answer and source references
@@ -65,14 +113,20 @@ class QueryService(IQueryService):
         if not validation["valid"]:
             raise ValidationException(validation["message"], field="question")
         
-        # Search for relevant chunks
+        logger.info(f"Searching vector store with user_id={user_id}, transcript_ids filter: {transcript_ids}")
+        
+        # Search for relevant chunks (user_id enforces multi-tenancy)
         search_results = await self.search(
             query=question,
             transcript_ids=transcript_ids,
+            user_id=user_id,
             max_results=max_results
         )
         
+        logger.info(f"Vector store search returned {len(search_results)} results")
+        
         if not search_results:
+            logger.warning(f"No search results found for query: '{question[:50]}...' with filters: {transcript_ids}")
             return {
                 "question": question,
                 "answer": "I couldn't find any relevant information in the transcripts to answer your question.",
@@ -83,8 +137,14 @@ class QueryService(IQueryService):
         # Build context from search results
         context = self._build_context(search_results)
         
-        # Generate answer using LLM
-        answer = await self._generate_answer(question, context)
+        # Generate answer using LLM (with optional provider settings)
+        answer = await self._generate_answer(
+            question, 
+            context,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+            llm_temperature=llm_temperature
+        )
         
         # Extract source references
         sources = self._extract_sources(search_results)
@@ -104,6 +164,7 @@ class QueryService(IQueryService):
         self,
         query: str,
         transcript_ids: Optional[List[str]] = None,
+        user_id: Optional[str] = None,
         max_results: int = DEFAULT_SEARCH_RESULTS
     ) -> List[Dict[str, Any]]:
         """
@@ -112,6 +173,7 @@ class QueryService(IQueryService):
         Args:
             query: Search query
             transcript_ids: Optional filter by specific transcripts
+            user_id: REQUIRED for multi-tenancy - ensures user only sees their data
             max_results: Maximum number of results
             
         Returns:
@@ -122,7 +184,8 @@ class QueryService(IQueryService):
         results = self.vector_store_dao.search(
             query=query,
             n_results=max_results,
-            transcript_ids=transcript_ids
+            transcript_ids=transcript_ids,
+            user_id=user_id
         )
         
         return results
@@ -238,15 +301,16 @@ class QueryService(IQueryService):
         
         return "\n\n---\n\n".join(context_parts)
     
-    async def _generate_answer(self, question: str, context: str) -> str:
-        """Generate answer using LLM."""
-        try:
-            response = self.openai_client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """You are a helpful assistant that answers questions based on video transcript content. 
+    async def _generate_answer(
+        self, 
+        question: str, 
+        context: str,
+        llm_provider: Optional[str] = None,
+        llm_model: Optional[str] = None,
+        llm_temperature: Optional[float] = None
+    ) -> str:
+        """Generate answer using LLM (supports multiple providers)."""
+        system_prompt = """You are a helpful assistant that answers questions based on video transcript content. 
                         
 Rules:
 - Only answer based on the provided context
@@ -254,14 +318,43 @@ Rules:
 - Cite sources when possible (e.g., "According to Source 1...")
 - Be concise but thorough
 - If you're unsure, express uncertainty"""
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Context from transcripts:\n\n{context}\n\n---\n\nQuestion: {question}\n\nAnswer:"
-                    }
+
+        user_prompt = f"Context from transcripts:\n\n{context}\n\n---\n\nQuestion: {question}\n\nAnswer:"
+
+        # Use the LLM provider abstraction if a specific provider is requested
+        if llm_provider and llm_provider.lower() in ['ollama', 'lmstudio']:
+            try:
+                provider = self._get_llm_provider(
+                    provider=llm_provider,
+                    model=llm_model,
+                    temperature=llm_temperature or 0.3
+                )
+                response = await provider.generate(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt,
+                    max_tokens=1000
+                )
+                return response.content
+            except Exception as e:
+                logger.error(f"Failed to generate answer with {llm_provider}: {e}")
+                raise AgentException(
+                    f"Failed to generate answer with {llm_provider}: {str(e)}",
+                    agent_name="query_service"
+                )
+        
+        # Default: Use OpenAI directly for better performance
+        try:
+            model = llm_model or settings.OPENAI_MODEL
+            temp = llm_temperature if llm_temperature is not None else 0.3
+            
+            response = self.openai_client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
                 ],
                 max_tokens=1000,
-                temperature=0.3
+                temperature=temp
             )
             
             return response.choices[0].message.content.strip()

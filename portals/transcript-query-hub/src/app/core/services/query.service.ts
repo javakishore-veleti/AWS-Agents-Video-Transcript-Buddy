@@ -28,7 +28,7 @@ export class QueryService {
   query(request: QueryRequest): Observable<QueryResponse> {
     this.loadingSubject.next(true);
     
-    return this.api.post<QueryResponse>('/api/query', request).pipe(
+    return this.api.post<QueryResponse>('/api/query/', request).pipe(
       tap((response) => {
         // Add to history
         const history = this.queryHistorySubject.value;

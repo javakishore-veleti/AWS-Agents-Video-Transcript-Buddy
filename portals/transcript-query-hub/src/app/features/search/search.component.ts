@@ -287,7 +287,7 @@ export class SearchComponent implements OnInit {
     this.hasSearched.set(true);
     this.result.set(null);
 
-    this.queryService.query({ query, include_sources: true }).subscribe({
+    this.queryService.query({ question: query, include_sources: true }).subscribe({
       next: (response) => {
         this.result.set(response);
         this.isLoading.set(false);

@@ -42,6 +42,12 @@ export const routes: Routes = [
     canActivate: [AuthGuard]
   },
   {
+    path: 'conversations',
+    loadComponent: () => import('./features/conversations/conversations.component').then(m => m.ConversationsComponent),
+    title: 'Conversations - TranscriptQuery Hub',
+    canActivate: [AuthGuard]
+  },
+  {
     path: 'upload',
     loadComponent: () => import('./features/upload/upload.component').then(m => m.UploadComponent),
     title: 'Upload - TranscriptQuery Hub',

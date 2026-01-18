@@ -22,7 +22,8 @@ from alembic.config import Config
 from alembic import command
 
 from config import settings, init_db
-from api.routes import health_router, transcript_router, query_router, auth_router, usage_router
+from api.routes import health_router, transcript_router, query_router, auth_router, usage_router, conversation_router, admin_router
+from api.routes.llm_routes import router as llm_router
 from common.exceptions import BaseAppException, AuthenticationException
 
 # Configure logging
@@ -173,6 +174,13 @@ app.include_router(
     tags=["Transcripts"]
 )
 
+# Conversation routes
+app.include_router(
+    conversation_router,
+    prefix="/api/conversations",
+    tags=["Conversations"]
+)
+
 # Query routes
 app.include_router(
     query_router,
@@ -185,6 +193,28 @@ app.include_router(
     usage_router,
     prefix="/api/usage",
     tags=["Usage"]
+)
+
+# Admin routes (encryption key management)
+app.include_router(
+    admin_router,
+    prefix="/api/admin",
+    tags=["Admin"]
+)
+
+# LLM provider routes (model selection)
+app.include_router(
+    llm_router,
+    prefix="/api",
+    tags=["LLM"]
+)
+
+# Ollama model management routes
+from api.routes.ollama_model_routes import router as ollama_model_router
+app.include_router(
+    ollama_model_router,
+    prefix="/api/models/ollama",
+    tags=["Ollama Models"]
 )
 
 

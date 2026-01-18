@@ -1,7 +1,8 @@
-import { Component, OnInit, HostListener, signal, computed } from '@angular/core';
+import { Component, OnInit, HostListener, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterModule } from '@angular/router';
+import { Router, RouterModule, NavigationEnd } from '@angular/router';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
+import { filter } from 'rxjs/operators';
 import { 
   faMagnifyingGlass, 
   faCloudArrowUp, 
@@ -14,15 +15,18 @@ import {
   faUser,
   faRightFromBracket,
   faChartLine,
-  faMessage
+  faMessage,
+  faComments
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthService } from '../../../core/services';
+import { ConversationService } from '../../../core/services/conversation.service';
 
 interface NavItem {
   label: string;
   route: string;
   icon: any;
   exact?: boolean;
+  matchPattern?: RegExp;  // Optional regex for custom matching
 }
 
 @Component({
@@ -57,9 +61,8 @@ interface NavItem {
           <div class="hidden md:flex items-center gap-1">
             @for (item of visibleNavItems(); track item.route) {
               <a [routerLink]="item.route" 
-                 routerLinkActive="nav-link-active"
-                 [routerLinkActiveOptions]="{exact: item.exact ?? false}"
-                 class="nav-link group">
+                 class="nav-link group"
+                 [class.nav-link-active]="isRouteActive(item)">
                 <fa-icon [icon]="item.icon" class="text-sm opacity-70 group-hover:opacity-100"></fa-icon>
                 {{ item.label }}
               </a>
@@ -130,9 +133,8 @@ interface NavItem {
             <div class="py-4 space-y-1 border-t border-gray-200">
               @for (item of visibleNavItems(); track item.route) {
                 <a [routerLink]="item.route" 
-                   routerLinkActive="mobile-nav-link-active"
-                   [routerLinkActiveOptions]="{exact: item.exact ?? false}"
                    class="mobile-nav-link"
+                   [class.mobile-nav-link-active]="isRouteActive(item)"
                    (click)="closeMobileMenu()">
                   <fa-icon [icon]="item.icon" class="w-5"></fa-icon>
                   {{ item.label }}
@@ -197,6 +199,8 @@ interface NavItem {
   `]
 })
 export class HeaderComponent implements OnInit {
+  private conversationService = inject(ConversationService);
+  
   // Icons
   faMagnifyingGlass = faMagnifyingGlass;
   faCloudArrowUp = faCloudArrowUp;
@@ -210,23 +214,27 @@ export class HeaderComponent implements OnInit {
   faRightFromBracket = faRightFromBracket;
   faChartLine = faChartLine;
   faMessage = faMessage;
+  faComments = faComments;
 
   // State
   isScrolled = signal(false);
   isMobileMenuOpen = signal(false);
   isUserMenuOpen = signal(false);
+  currentUrl = signal('');
   
   // Auth state
   isAuthenticated = this.authService.isAuthenticated;
   user = computed(() => this.authService.getCurrentUser());
 
-  // Navigation items
+  // Navigation items with custom match patterns
+  // When a conversation is selected, upload/chat within it should highlight Conversations
   private allNavItems: NavItem[] = [
     { label: 'Home', route: '/', icon: faHome, exact: true },
-    { label: 'Search', route: '/search', icon: faMagnifyingGlass },
-    { label: 'Chat', route: '/chat', icon: faMessage },
+    { label: 'Conversations', route: '/conversations', icon: faComments, matchPattern: /^\/conversations/ },
+    { label: 'Search', route: '/search', icon: faMagnifyingGlass, exact: true },
+    { label: 'Chat', route: '/chat', icon: faMessage, exact: true },
     { label: 'Transcripts', route: '/transcripts', icon: faFileLines },
-    { label: 'Upload', route: '/upload', icon: faCloudArrowUp },
+    { label: 'Upload', route: '/upload', icon: faCloudArrowUp, exact: true },
   ];
 
   // Filter nav items based on auth state
@@ -245,6 +253,14 @@ export class HeaderComponent implements OnInit {
 
   ngOnInit(): void {
     this.checkScroll();
+    
+    // Track current URL for custom active state
+    this.currentUrl.set(this.router.url);
+    this.router.events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd)
+    ).subscribe((event) => {
+      this.currentUrl.set(event.urlAfterRedirects);
+    });
   }
 
   @HostListener('window:scroll')
@@ -263,6 +279,44 @@ export class HeaderComponent implements OnInit {
 
   private checkScroll(): void {
     this.isScrolled.set(window.scrollY > 20);
+  }
+
+  /**
+   * Check if a nav item's route is currently active.
+   * Uses custom matchPattern if defined, otherwise standard matching.
+   * 
+   * Special logic: When a conversation is selected and we're on upload/chat,
+   * highlight Conversations instead of Upload/Chat standalone routes.
+   */
+  isRouteActive(item: NavItem): boolean {
+    const url = this.currentUrl();
+    const hasSelectedConversation = !!this.conversationService.selectedConversation();
+    
+    // If we're on a page that's part of a conversation workflow
+    // (upload or chat with a selected conversation), highlight Conversations
+    if (hasSelectedConversation) {
+      const isConversationWorkflow = url === '/upload' || url === '/chat';
+      
+      if (item.route === '/conversations' && isConversationWorkflow) {
+        return true;
+      }
+      
+      if ((item.route === '/upload' || item.route === '/chat') && isConversationWorkflow) {
+        return false;
+      }
+    }
+    
+    // Use custom match pattern if defined
+    if (item.matchPattern) {
+      return item.matchPattern.test(url);
+    }
+    
+    // Standard exact or prefix matching
+    if (item.exact) {
+      return url === item.route;
+    }
+    
+    return url.startsWith(item.route);
   }
 
   toggleMobileMenu(): void {
