@@ -5,6 +5,9 @@ Request Models - Pydantic models for API request validation.
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
+# Import auth models
+from .auth_request_models import RegisterRequest, LoginRequest, RefreshTokenRequest
+
 
 class QueryRequest(BaseModel):
     """Request model for querying transcripts."""
@@ -121,3 +124,15 @@ class TranscriptUploadRequest(BaseModel):
                 "tags": ["tutorial", "python"]
             }
         }
+
+
+# Export all
+__all__ = [
+    "QueryRequest",
+    "SearchRequest",
+    "ReindexRequest",
+    "TranscriptUploadRequest",
+    "RegisterRequest",
+    "LoginRequest",
+    "RefreshTokenRequest",
+]

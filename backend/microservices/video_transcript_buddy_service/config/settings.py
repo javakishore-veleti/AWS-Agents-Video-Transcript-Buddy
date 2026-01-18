@@ -8,6 +8,7 @@ Usage:
 Note: 
     - AWS credentials are loaded from AWS profile (not stored in .env)
     - OPENAI_API_KEY should be set as system environment variable
+    - DATABASE_URL defaults to SQLite for local dev, set for PostgreSQL in production
 """
 
 import os
@@ -30,10 +31,35 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     
+    # -----------------------------------------------------------------------------
+    # Database Settings (SQLite local / PostgreSQL production)
+    # -----------------------------------------------------------------------------
+    # If DATABASE_URL is set, use PostgreSQL; otherwise default to SQLite
+    DATABASE_URL: Optional[str] = None
+    SQLITE_DATABASE_PATH: str = "./data/transcriptquery.db"
+    
+    # Database pool settings (for PostgreSQL)
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_TIMEOUT: int = 30
+    
+    @property
+    def database_uri(self) -> str:
+        """Get the database URI - PostgreSQL if configured, else SQLite."""
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        return f"sqlite:///{self.SQLITE_DATABASE_PATH}"
+    
+    @property
+    def is_sqlite(self) -> bool:
+        """Check if using SQLite."""
+        return self.DATABASE_URL is None
+    
+    # -----------------------------------------------------------------------------
     # AWS Settings (uses AWS profile - no keys stored!)
+    # -----------------------------------------------------------------------------
     AWS_PROFILE: str = "video-transcript-buddy"
     AWS_REGION: str = "us-east-1"
-    # These are optional - only used if explicitly set (not recommended)
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     
@@ -42,8 +68,9 @@ class Settings(BaseSettings):
     S3_TRANSCRIPT_FOLDER: str = "transcripts"
     S3_ARCHIVE_FOLDER: str = "archive"
     
-    # OpenAI Settings (reads from system environment)
-    # OPENAI_API_KEY is read from system environment, not .env file
+    # -----------------------------------------------------------------------------
+    # OpenAI Settings
+    # -----------------------------------------------------------------------------
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-ada-002"
@@ -58,7 +85,15 @@ class Settings(BaseSettings):
     AGENTCORE_ENABLED: bool = False
     AGENTCORE_ENDPOINT_URL: Optional[str] = None
     
-    # CORS Settings - accepts comma-separated string or list
+    # -----------------------------------------------------------------------------
+    # Authentication Settings
+    # -----------------------------------------------------------------------------
+    SECRET_KEY: str = "change-this-in-production-use-strong-random-key"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    
+    # CORS Settings
     CORS_ORIGINS: Union[str, List[str]] = "http://localhost:4200,http://127.0.0.1:4200"
     
     @field_validator('CORS_ORIGINS', mode='before')

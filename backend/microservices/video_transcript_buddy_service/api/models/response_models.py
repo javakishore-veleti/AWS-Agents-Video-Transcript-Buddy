@@ -5,6 +5,9 @@ Response Models - Pydantic models for API responses.
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 
+# Import auth models
+from .auth_response_models import AuthResponse, TokenResponse, UserResponse
+
 
 class BaseResponse(BaseModel):
     """Base response model for all API responses."""
@@ -162,3 +165,26 @@ class VectorStoreStatsResponse(BaseResponse):
         default={},
         description="Vector store statistics"
     )
+
+
+# Export all
+__all__ = [
+    "BaseResponse",
+    "TranscriptData",
+    "TranscriptResponse",
+    "TranscriptListResponse",
+    "UploadResponse",
+    "DeleteResponse",
+    "ReindexResponse",
+    "QueryResultData",
+    "QueryResponse",
+    "SearchResultItem",
+    "SearchResponse",
+    "SuggestionsResponse",
+    "ErrorDetail",
+    "HealthCheckResponse",
+    "VectorStoreStatsResponse",
+    "AuthResponse",
+    "TokenResponse",
+    "UserResponse",
+]

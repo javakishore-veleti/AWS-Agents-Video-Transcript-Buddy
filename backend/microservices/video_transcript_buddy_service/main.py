@@ -17,9 +17,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
-from config import settings
-from api.routes import health_router, transcript_router, query_router
-from common.exceptions import BaseAppException
+from config import settings, init_db
+from api.routes import health_router, transcript_router, query_router, auth_router
+from common.exceptions import BaseAppException, AuthenticationException
 
 # Configure logging
 logging.basicConfig(
@@ -37,6 +37,11 @@ async def lifespan(app: FastAPI):
     logger.info(f"Debug mode: {settings.DEBUG}")
     logger.info(f"AWS Region: {settings.AWS_REGION}")
     logger.info(f"S3 Bucket: {settings.S3_BUCKET_NAME or '(not configured)'}")
+    logger.info(f"Database: {'SQLite' if settings.is_sqlite else 'PostgreSQL'}")
+    
+    # Initialize database
+    init_db()
+    logger.info("Database initialized")
     
     yield
     
@@ -75,6 +80,16 @@ async def app_exception_handler(request: Request, exc: BaseAppException):
     logger.error(f"Application error: {exc.message}")
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
+        content=exc.to_dict()
+    )
+
+
+@app.exception_handler(AuthenticationException)
+async def auth_exception_handler(request: Request, exc: AuthenticationException):
+    """Handle authentication exceptions."""
+    logger.warning(f"Authentication error: {exc.message}")
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
         content=exc.to_dict()
     )
 
@@ -126,6 +141,13 @@ app.include_router(
     tags=["Health"]
 )
 
+# Auth routes
+app.include_router(
+    auth_router,
+    prefix="/api/auth",
+    tags=["Authentication"]
+)
+
 # Transcript management routes
 app.include_router(
     transcript_router,
@@ -164,6 +186,7 @@ async def root():
         },
         "endpoints": {
             "health": "/health",
+            "auth": "/api/auth",
             "transcripts": "/api/transcripts",
             "query": "/api/query"
         }
