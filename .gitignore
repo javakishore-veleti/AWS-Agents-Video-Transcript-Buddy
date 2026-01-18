@@ -211,4 +211,9 @@ __marimo__/
 **/.DS_Store
 **/.angular/
 **/Thumbs.db
+
+**/transcriptquery.db
+**/transcriptquery.db-journal
+**/transcripts_docs.pkl
+**/transcripts.faiss
 # End of https://www.toptal.com/developers/gitignore/api/python
